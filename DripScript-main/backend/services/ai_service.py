@@ -1,145 +1,91 @@
 """
-Real AI Service for Clothing Analysis and Outfit Recommendations
-Uses Groq API (free tier with excellent limits) for AI analysis
+AI Service for Clothing Analysis and Outfit Recommendations
+Uses Cohere API for text-based AI analysis
 """
 
 import os
 import requests
 import json
-import base64
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
 import logging
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-@dataclass
-class ClothingItem:
-    name: str
-    category: str
-    color: str
-    style: str
-    weather_suitability: List[str]
-    occasion: List[str]
-    confidence: float
 
 class RealAIService:
-    """Real AI service for clothing analysis using Gemini"""
+    """AI service for clothing analysis using Cohere"""
 
-    
     def __init__(self):
-        # Accept both backend-style and Vite-style env var names
-        self.gemini_api_key = os.getenv('GEMINI_API_KEY') or os.getenv('VITE_GEMINI_API_KEY')
-        self.openweather_api_key = os.getenv('OPENWEATHER_API_KEY') or os.getenv('VITE_WEATHER_API_KEY')
-        self.gemini_base_url = "https://generativelanguage.googleapis.com/v1beta/models"
+        self.cohere_api_key = os.getenv('COHERE_API_KEY')
+        self.openweather_api_key = os.getenv('OPENWEATHER_API_KEY')
+        self.cohere_base_url = "https://api.cohere.com/v1"
         self.weather_base_url = "http://api.openweathermap.org/data/2.5"
-        self.model_name = "gemini-1.5-flash"
-        
-        if not self.gemini_api_key:
-            logger.warning("GEMINI_API_KEY not found in environment variables")
+
+        if not self.cohere_api_key:
+            logger.warning("COHERE_API_KEY not found in environment variables")
         if not self.openweather_api_key:
             logger.info("OPENWEATHER_API_KEY not configured; using mock weather data")
-    
-    def analyze_clothing_image(self, image_data: str, filename: str = "") -> Dict[str, Any]:
 
+    def analyze_clothing_image(self, image_data: str, filename: str = "") -> Dict[str, Any]:
         """
-        Analyze clothing from image using AI
-        
-        Args:
-            image_data: Base64 encoded image data
-            filename: Optional filename for context
-            
-        Returns:
-            Dictionary with clothing analysis
+        Analyze clothing from image using AI.
+        Cohere doesn't support vision, so we use filename + text inference.
         """
         try:
-            # Build strict prompt with normalization guidance
-            analysis_prompt = f"""
-            You are a fashion product tagger. Analyze the clothing item provided (image attached if present) and the filename "{filename}".
-            Return ONLY a single JSON object, nothing else. Keys must be exactly:
-            name, category, color, style, weather_suitability, occasions, confidence, description.
-            - category must be one of: tops, bottoms, dresses, shoes, accessories.
-            - color must be one of: black, white, red, blue, green, yellow, purple, pink, brown, gray, orange.
-            If you detect synonyms, normalize them (e.g., navy->blue, denim->blue, beige->brown, grey->gray).
-            Choose the primary color of the garment (ignore the background and model's skin/shoes if not the product).
-            Example valid JSON:
-            {{"name":"Black Jeans","category":"bottoms","color":"black","style":"casual","weather_suitability":["mild","cool"],"occasions":["casual","everyday"],"confidence":0.9,"description":"Denim pants; dark black tone"}}
-            """
-            
-            if self.gemini_api_key:
-                # Try multimodal query when image is available
-                image_base64 = None
-                mime_type = None
-                if image_data:
-                    # Accept full data URL or plain base64
-                    if image_data.startswith('data:') and ';base64,' in image_data:
-                        header, b64 = image_data.split(','); image_base64 = b64
-                        # Extract mime from header e.g., data:image/jpeg;base64
-                        try:
-                            mime_type = header.split(':',1)[1].split(';',1)[0]
-                        except Exception:
-                            mime_type = 'image/jpeg'
-                    else:
-                        image_base64 = image_data
-                        mime_type = 'image/jpeg'
-                result = self._query_gemini(analysis_prompt, image_base64=image_base64, mime_type=mime_type)
+            analysis_prompt = (
+                f'You are a fashion product tagger. Based on the filename "{filename}", '
+                f'infer the clothing item details. Return ONLY a single JSON object with keys: '
+                f'name, category, color, style, weather_suitability, occasions, confidence, description. '
+                f'- category must be one of: tops, bottoms, dresses, shoes, accessories. '
+                f'- color must be one of: black, white, red, blue, green, yellow, purple, pink, brown, gray, orange. '
+                f'Example: {{"name":"Black Jeans","category":"bottoms","color":"black","style":"casual",'
+                f'"weather_suitability":["mild","cool"],"occasions":["casual","everyday"],'
+                f'"confidence":0.85,"description":"Classic dark denim pants"}}'
+            )
+
+            if self.cohere_api_key and filename:
+                result = self._query_cohere(analysis_prompt)
                 if result:
                     try:
-                        # Parse JSON from the response
                         json_start = result.find('{')
                         json_end = result.rfind('}') + 1
                         if json_start != -1 and json_end > json_start:
-                            json_str = result[json_start:json_end]
-                            parsed_result = json.loads(json_str)
+                            parsed_result = json.loads(result[json_start:json_end])
                             return self._normalize_analysis(parsed_result, filename)
                     except json.JSONDecodeError:
-                        logger.error("Failed to parse JSON from AI response")
-            
-            # Fallback to rule-based analysis
+                        logger.error("Failed to parse JSON from Cohere response")
+
             return self._fallback_analysis(filename)
-            
+
         except Exception as e:
             logger.error(f"Error in clothing analysis: {e}")
             return self._fallback_analysis(filename)
-    
+
     def get_weather_data(self, city: str = "London") -> Dict[str, Any]:
-        """
-        Get real weather data from OpenWeatherMap API
-        
-        Args:
-            city: City name for weather data
-            
-        Returns:
-            Dictionary with weather information
-        """
+        """Get real weather data from OpenWeatherMap API"""
         try:
             if not self.openweather_api_key:
                 return self._mock_weather_data()
-            
+
             url = f"{self.weather_base_url}/weather"
             params = {
                 'q': city,
                 'appid': self.openweather_api_key,
                 'units': 'metric'
             }
-            
+
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
-            
             data = response.json()
-            
-            # Convert to our format
+
             temperature = data['main']['temp']
             condition = data['weather'][0]['main'].lower()
             description = data['weather'][0]['description']
             humidity = data['main']['humidity']
             wind_speed = data['wind']['speed']
-            
-            # Determine weather category for outfit selection
             weather_category = self._categorize_weather(temperature, condition)
-            
+
             return {
                 'temperature': round(temperature),
                 'condition': condition,
@@ -150,30 +96,33 @@ class RealAIService:
                 'city': city,
                 'recommendation': self._get_weather_recommendation(temperature, condition)
             }
-            
+
         except Exception as e:
             logger.error(f"Error getting weather data: {e}")
             return self._mock_weather_data()
-    
+
     def classify_clothing_image(self, image_data: str) -> Dict[str, Any]:
-        """Classify a clothing image into the exact schema required by the frontend."""
+        """Classify a clothing image into the schema required by the frontend."""
         try:
             classify_prompt = (
-                "Analyze this clothing item and return ONLY a JSON object with these "
-                "fields: name (specific item name), category (one of: tops/bottoms/dresses/shoes/accessories), "
-                "color (single main color as plain text), vibe (one of: casual/formal/sporty/trendy/vintage), "
-                "tags (array of 3 descriptive words)"
+                "You are a fashion AI. A user uploaded a clothing image. "
+                "Based on common clothing items, return ONLY a JSON object with these fields: "
+                "name (specific item name like 'Classic White T-Shirt'), "
+                "category (one of: tops/bottoms/dresses/shoes/accessories), "
+                "color (single main color as plain text), "
+                "vibe (one of: casual/formal/sporty/trendy/vintage), "
+                "tags (array of 3 descriptive words). "
+                "Example: {\"name\":\"Navy Blazer\",\"category\":\"tops\",\"color\":\"blue\","
+                "\"vibe\":\"formal\",\"tags\":[\"structured\",\"professional\",\"versatile\"]}"
             )
 
-            if self.gemini_api_key:
-                # inlineData accepts base64 image; image_data is expected to already be base64 (no data URL header)
-                result_text = self._query_gemini(classify_prompt, image_base64=image_data, mime_type="image/jpeg")
+            if self.cohere_api_key:
+                result_text = self._query_cohere(classify_prompt)
                 if result_text:
                     json_start = result_text.find('{')
                     json_end = result_text.rfind('}') + 1
                     if json_start != -1 and json_end > json_start:
                         parsed = json.loads(result_text[json_start:json_end])
-                        # Best-effort schema cleanup
                         parsed = parsed if isinstance(parsed, dict) else {}
                         return {
                             "name": parsed.get("name", "Stylish Item"),
@@ -201,172 +150,108 @@ class RealAIService:
             }
 
     def generate_outfit_recommendation(self, wardrobe: List[Dict], weather: Dict, occasion: str) -> Dict[str, Any]:
-        """
-        Generate AI-powered outfit recommendations (3 outfits) for the frontend.
-
-        Returns: { "outfits": [ { items, styling_tip, color_story, why_it_works }, ... ] }
-
-
-        
-        Args:
-            wardrobe: List of user's clothing items
-            weather: Weather data
-            occasion: Occasion type
-            
-        Returns:
-            Dictionary with outfit recommendation
-        """
+        """Generate AI-powered outfit recommendations (3 outfits)."""
         try:
             if not wardrobe:
                 return {"error": "No wardrobe items available"}
-            
-            # Create context for AI
+
             wardrobe_context = self._format_wardrobe_for_ai(wardrobe)
             weather_context = f"Temperature: {weather.get('temperature', 20)}°C, Condition: {weather.get('condition', 'clear')}"
-            
-            recommendation_prompt = f"""
-You are a professional fashion stylist. Given these wardrobe items: {wardrobe_context} and occasion: {occasion} and weather: {weather_context}, suggest 3 complete outfits.
 
-For each outfit return: items array (names from wardrobe), styling_tip (one sentence), color_story (describe the color combination), and why_it_works (one sentence).
+            recommendation_prompt = (
+                f"You are a professional fashion stylist. Given these wardrobe items:\n"
+                f"{wardrobe_context}\n\n"
+                f"Occasion: {occasion}\nWeather: {weather_context}\n\n"
+                f"Suggest 3 complete outfits. For each outfit return: items array (names from the wardrobe list above), "
+                f"styling_tip (one sentence), color_story (describe the color combination), "
+                f"and why_it_works (one sentence).\n\n"
+                f"Return ONLY a JSON array of 3 outfit objects like:\n"
+                f'[{{"items":["Item 1","Item 2"],"styling_tip":"...","color_story":"...","why_it_works":"..."}}]'
+            )
 
-Return ONLY a JSON array of 3 outfit objects like:
-[
-  {{
-    "items": ["Item Name 1", "Item Name 2", "Item Name 3"],
-    "styling_tip": "...",
-    "color_story": "...",
-    "why_it_works": "..."
-  }}
-]
-"""
-
-            
-            if self.gemini_api_key:
-                result = self._query_gemini(recommendation_prompt)
+            if self.cohere_api_key:
+                result = self._query_cohere(recommendation_prompt)
                 if result:
                     try:
+                        # Try to find a JSON array first
+                        arr_start = result.find('[')
+                        arr_end = result.rfind(']') + 1
+                        if arr_start != -1 and arr_end > arr_start:
+                            parsed_result = json.loads(result[arr_start:arr_end])
+                            if isinstance(parsed_result, list):
+                                return {"outfits": parsed_result}
+
+                        # Fallback: try finding a JSON object with "outfits" key
                         json_start = result.find('{')
                         json_end = result.rfind('}') + 1
                         if json_start != -1 and json_end > json_start:
-                            json_str = result[json_start:json_end]
-                            parsed_result = json.loads(json_str)
-
-                            # Gemini should return ONLY a JSON array of 3 outfit objects
-                            if isinstance(parsed_result, list):
-                                return {"outfits": parsed_result}
+                            parsed_result = json.loads(result[json_start:json_end])
                             if isinstance(parsed_result, dict) and isinstance(parsed_result.get("outfits"), list):
                                 return parsed_result
-                            return {"outfits": []}
                     except json.JSONDecodeError:
                         logger.error("Failed to parse outfit recommendation JSON")
-            
-            # Fallback to rule-based recommendation
+
             return self._fallback_outfit_recommendation(wardrobe, weather, occasion)
-            
+
         except Exception as e:
             logger.error(f"Error generating outfit recommendation: {e}")
             return self._fallback_outfit_recommendation(wardrobe, weather, occasion)
-    
-    def _query_gemini(self, prompt: str, image_base64: Optional[str] = None, mime_type: Optional[str] = None) -> Optional[str]:
-        """Query Google Gemini API with optional inline image data"""
-        try:
-            url = f"{self.gemini_base_url}/{self.model_name}:generateContent?key={self.gemini_api_key}"
-            
-            headers = {
-                'Content-Type': 'application/json'
-            }
-            
-            # Format prompt for Gemini
-            formatted_prompt = prompt
 
-            
-            parts = []
-            if image_base64:
-                parts.append({
-                    "inlineData": {
-                        "mimeType": mime_type or "image/jpeg",
-                        "data": image_base64
-                    }
-                })
-            parts.append({"text": formatted_prompt})
-            
-            payload = {
-                "contents": [{
-                    "parts": parts
-                }],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "topK": 1,
-                    "topP": 1,
-                    "maxOutputTokens": 1000,
-                    "stopSequences": []
-                },
-                "safetySettings": [
-                    {
-                        "category": "HARM_CATEGORY_HARASSMENT",
-                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                    },
-                    {
-                        "category": "HARM_CATEGORY_HATE_SPEECH",
-                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                    },
-                    {
-                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                    },
-                    {
-                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                    }
-                ]
+    def _query_cohere(self, prompt: str) -> Optional[str]:
+        """Query Cohere Chat API"""
+        try:
+            url = f"{self.cohere_base_url}/chat"
+
+            headers = {
+                'Authorization': f'Bearer {self.cohere_api_key}',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             }
-            
-            response = requests.post(
-                url,
-                headers=headers,
-                json=payload,
-                timeout=30
-            )
-            
+
+            payload = {
+                "model": "command-r-plus",
+                "message": prompt,
+                "temperature": 0.2,
+                "preamble": "You are a fashion AI assistant. Always respond with valid JSON only, no extra text."
+            }
+
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
             result = response.json()
-            
-            # Extract text from Gemini response
-            if 'candidates' in result and len(result['candidates']) > 0:
-                candidate = result['candidates'][0]
-                if 'content' in candidate and 'parts' in candidate['content']:
-                    if len(candidate['content']['parts']) > 0:
-                        return candidate['content']['parts'][0]['text']
-            
-            logger.warning(f"Unexpected Gemini response format: {result}")
+
+            return result.get('text', '')
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"Cohere API HTTP error: {e.response.status_code} - {e.response.text}")
             return None
-            
         except Exception as e:
-            logger.error(f"Error querying Gemini API: {e}")
+            logger.error(f"Error querying Cohere API: {e}")
             return None
-    
+
     def _normalize_analysis(self, data: Dict[str, Any], filename: str = "") -> Dict[str, Any]:
-        """Normalize category and color to supported sets and apply synonyms"""
+        """Normalize category and color to supported sets"""
         category = (data.get('category') or '').strip().lower()
         color = (data.get('color') or '').strip().lower()
         name = data.get('name') or 'Stylish Item'
         style = (data.get('style') or 'casual').strip().lower()
 
-        # Category normalization
         cat_map = {
-            'top': 'tops', 't-shirt': 'tops', 'tee': 'tops', 'shirt': 'tops', 'blouse': 'tops', 'hoodie': 'tops', 'sweater': 'tops', 'jacket': 'tops', 'coat': 'tops',
-            'pant': 'bottoms', 'pants': 'bottoms', 'jean': 'bottoms', 'jeans': 'bottoms', 'trouser': 'bottoms', 'short': 'bottoms', 'shorts': 'bottoms', 'skirt': 'bottoms',
+            'top': 'tops', 't-shirt': 'tops', 'tee': 'tops', 'shirt': 'tops',
+            'blouse': 'tops', 'hoodie': 'tops', 'sweater': 'tops', 'jacket': 'tops', 'coat': 'tops',
+            'pant': 'bottoms', 'pants': 'bottoms', 'jean': 'bottoms', 'jeans': 'bottoms',
+            'trouser': 'bottoms', 'short': 'bottoms', 'shorts': 'bottoms', 'skirt': 'bottoms',
             'dress': 'dresses', 'gown': 'dresses',
-            'shoe': 'shoes', 'shoes': 'shoes', 'sneaker': 'shoes', 'sneakers': 'shoes', 'boot': 'shoes', 'boots': 'shoes', 'sandal': 'shoes', 'sandals': 'shoes',
-            'accessory': 'accessories', 'belt': 'accessories', 'cap': 'accessories', 'hat': 'accessories', 'scarf': 'accessories', 'watch': 'accessories', 'glove': 'accessories'
+            'shoe': 'shoes', 'shoes': 'shoes', 'sneaker': 'shoes', 'sneakers': 'shoes',
+            'boot': 'shoes', 'boots': 'shoes', 'sandal': 'shoes', 'sandals': 'shoes',
+            'accessory': 'accessories', 'belt': 'accessories', 'cap': 'accessories',
+            'hat': 'accessories', 'scarf': 'accessories', 'watch': 'accessories', 'glove': 'accessories'
         }
         if category in ['tops', 'bottoms', 'dresses', 'shoes', 'accessories']:
             normalized_category = category
         else:
             normalized_category = cat_map.get(category)
             if not normalized_category:
-                # Try to infer from name or description keywords
-                text = f"{name} {data.get('description','')}".lower()
+                text = f"{name} {data.get('description', '')}".lower()
                 for key, val in cat_map.items():
                     if key in text:
                         normalized_category = val
@@ -374,7 +259,6 @@ Return ONLY a JSON array of 3 outfit objects like:
             if not normalized_category:
                 normalized_category = 'accessories'
 
-        # Color normalization
         color_map = {
             'navy': 'blue', 'denim': 'blue', 'sky blue': 'blue', 'teal': 'blue',
             'grey': 'gray', 'charcoal': 'gray', 'silver': 'gray',
@@ -383,37 +267,18 @@ Return ONLY a JSON array of 3 outfit objects like:
             'violet': 'purple', 'lavender': 'purple',
             'gold': 'yellow', 'mustard': 'yellow',
             'magenta': 'pink', 'fuchsia': 'pink',
-            'orange': 'orange', 'black': 'black', 'white': 'white', 'red': 'red', 'blue': 'blue', 'green': 'green', 'yellow': 'yellow', 'purple': 'purple', 'pink': 'pink', 'brown': 'brown', 'gray': 'gray'
+            'orange': 'orange', 'black': 'black', 'white': 'white',
+            'red': 'red', 'blue': 'blue', 'green': 'green', 'yellow': 'yellow',
+            'purple': 'purple', 'pink': 'pink', 'brown': 'brown', 'gray': 'gray'
         }
         normalized_color = color_map.get(color)
         if not normalized_color:
-            # Try containment mapping
             for k, v in color_map.items():
                 if k in color:
                     normalized_color = v
                     break
         if not normalized_color:
-            # Try filename-based color inference with common synonyms
-            file_lower = (filename or '').lower()
-            filename_color_hints = {
-                'yellow': ['yellow','gold','mustard','lemon','sun'],
-                'blue': ['blue','navy','denim','royal','sky'],
-                'red': ['red','crimson','scarlet','maroon','burgundy','cherry'],
-                'green': ['green','olive','forest','lime'],
-                'black': ['black','charcoal'],
-                'white': ['white','ivory','cream'],
-                'purple': ['purple','violet','lavender'],
-                'orange': ['orange','peach','coral'],
-                'pink': ['pink','magenta','fuchsia','rose'],
-                'brown': ['brown','beige','tan','khaki','camel'],
-                'gray': ['gray','grey','silver']
-            }
-            for base, hints in filename_color_hints.items():
-                if any(h in file_lower for h in hints):
-                    normalized_color = base
-                    break
-            if not normalized_color:
-                normalized_color = 'gray'
+            normalized_color = 'gray'
 
         occasions = data.get('occasions') or data.get('occasion') or ['casual', 'everyday']
         if isinstance(occasions, str):
@@ -427,9 +292,9 @@ Return ONLY a JSON array of 3 outfit objects like:
             'weather_suitability': data.get('weather_suitability') or ['mild', 'warm'],
             'occasions': occasions,
             'confidence': float(data.get('confidence') or 0.8),
-            'description': data.get('description') or 'AI analysis with normalization'
+            'description': data.get('description') or 'AI-powered analysis'
         }
-    
+
     def _mock_weather_data(self) -> Dict[str, Any]:
         """Mock weather data when API is not available"""
         return {
@@ -442,9 +307,8 @@ Return ONLY a JSON array of 3 outfit objects like:
             'city': 'Demo Location',
             'recommendation': 'Perfect weather for light layers'
         }
-    
+
     def _categorize_weather(self, temperature: float, condition: str) -> str:
-        """Categorize weather for outfit selection"""
         if temperature >= 25:
             return 'hot'
         elif temperature >= 20:
@@ -455,9 +319,8 @@ Return ONLY a JSON array of 3 outfit objects like:
             return 'cool'
         else:
             return 'cold'
-    
+
     def _get_weather_recommendation(self, temperature: float, condition: str) -> str:
-        """Get weather-specific clothing recommendation"""
         if temperature >= 25:
             return "Light, breathable fabrics recommended"
         elif temperature >= 20:
@@ -468,67 +331,65 @@ Return ONLY a JSON array of 3 outfit objects like:
             return "Warm layers and outerwear needed"
         else:
             return "Heavy winter clothing recommended"
-    
+
     def _format_wardrobe_for_ai(self, wardrobe: List[Dict]) -> str:
-        """Format wardrobe items for AI context"""
         items = []
         for item in wardrobe:
             items.append(f"- {item.get('name', 'Unknown')} ({item.get('category', 'unknown')}, {item.get('color', 'unknown')} color, {item.get('vibe', 'casual')} style)")
         return '\n'.join(items)
-    
+
     def _fallback_analysis(self, filename: str) -> Dict[str, Any]:
-        """Fallback analysis based on filename heuristics (no AI)."""
+        """Fallback analysis based on filename heuristics"""
         filename_lower = (filename or '').lower()
-        # Color detection
         colors = {
-            'yellow': ['yellow','golden','mustard','lemon'],
-            'blue': ['blue','navy','royal','sky','denim'],
-            'red': ['red','crimson','scarlet','cherry','maroon','burgundy'],
-            'green': ['green','forest','lime','olive'],
-            'black': ['black','charcoal','dark'],
-            'white': ['white','cream','ivory'],
-            'purple': ['purple','violet','lavender'],
-            'orange': ['orange','peach','coral'],
-            'pink': ['pink','rose','magenta','fuchsia'],
-            'brown': ['brown','tan','beige','khaki','camel'],
-            'gray': ['gray','grey','silver']
+            'yellow': ['yellow', 'golden', 'mustard', 'lemon'],
+            'blue': ['blue', 'navy', 'royal', 'sky', 'denim'],
+            'red': ['red', 'crimson', 'scarlet', 'cherry', 'maroon', 'burgundy'],
+            'green': ['green', 'forest', 'lime', 'olive'],
+            'black': ['black', 'charcoal', 'dark'],
+            'white': ['white', 'cream', 'ivory'],
+            'purple': ['purple', 'violet', 'lavender'],
+            'orange': ['orange', 'peach', 'coral'],
+            'pink': ['pink', 'rose', 'magenta', 'fuchsia'],
+            'brown': ['brown', 'tan', 'beige', 'khaki', 'camel'],
+            'gray': ['gray', 'grey', 'silver']
         }
         detected_color = 'gray'
         for color, hints in colors.items():
             if any(h in filename_lower for h in hints):
                 detected_color = color
                 break
-        # Category detection
-        if any(w in filename_lower for w in ['shirt','tee','t-shirt','top','blouse','hoodie','sweater','tank','jacket','coat']):
+
+        if any(w in filename_lower for w in ['shirt', 'tee', 't-shirt', 'top', 'blouse', 'hoodie', 'sweater', 'tank', 'jacket', 'coat']):
             category = 'tops'
-        elif any(w in filename_lower for w in ['jean','pant','trouser','short','skirt']):
+        elif any(w in filename_lower for w in ['jean', 'pant', 'trouser', 'short', 'skirt']):
             category = 'bottoms'
-        elif any(w in filename_lower for w in ['dress','gown','frock']):
+        elif any(w in filename_lower for w in ['dress', 'gown', 'frock']):
             category = 'dresses'
-        elif any(w in filename_lower for w in ['shoe','boot','sneaker','sandal','heel']):
+        elif any(w in filename_lower for w in ['shoe', 'boot', 'sneaker', 'sandal', 'heel']):
             category = 'shoes'
         else:
             category = 'accessories'
-        # Name cleanup
-        name = filename.replace('_',' ').replace('-',' ')
+
+        name = filename.replace('_', ' ').replace('-', ' ')
         name = ''.join(c for c in name if c.isalnum() or c.isspace()).strip() or 'Stylish Item'
         name = ' '.join(name.split()).title()
+
         return {
             'name': name,
             'category': category,
             'color': detected_color,
             'style': 'casual',
-            'weather_suitability': ['mild','warm'] if category in ['tops','dresses'] else ['mild','cool'],
-            'occasions': ['casual','everyday'],
+            'weather_suitability': ['mild', 'warm'] if category in ['tops', 'dresses'] else ['mild', 'cool'],
+            'occasions': ['casual', 'everyday'],
             'confidence': 0.8,
             'description': 'Filename-based fallback analysis'
         }
+
     def _fallback_outfit_recommendation(self, wardrobe: List[Dict], weather: Dict, occasion: str) -> Dict[str, Any]:
         """Fallback rule-based outfit recommendation"""
-        # Simple rule-based selection
         temperature = weather.get('temperature', 20)
-        
-        # Filter items by weather appropriateness
+
         suitable_items = []
         for item in wardrobe:
             if temperature >= 20 and item.get('category') in ['tops', 'dresses', 'shorts']:
@@ -537,14 +398,13 @@ Return ONLY a JSON array of 3 outfit objects like:
                 suitable_items.append(item)
             elif item.get('category') == 'shoes':
                 suitable_items.append(item)
-        
+
         if not suitable_items:
             suitable_items = wardrobe
-        
-        # Select one item from each category if possible
+
         outfit = []
         categories_needed = ['tops', 'bottoms', 'shoes']
-        
+
         for category in categories_needed:
             items_in_category = [item for item in suitable_items if item.get('category') == category]
             if items_in_category:
@@ -553,14 +413,15 @@ Return ONLY a JSON array of 3 outfit objects like:
                     'category': category,
                     'reason': f'Selected for {occasion} occasion and {weather.get("weather_category", "current")} weather'
                 })
-        
+
         return {
-            'outfit': outfit,
-            'overall_reasoning': f'Rule-based selection appropriate for {occasion} in {weather.get("weather_category", "current")} weather',
-            'style_score': 7,
-            'weather_score': 8,
-            'confidence': 0.8
+            'outfits': [{
+                'items': [item['name'] for item in outfit],
+                'styling_tip': f'A solid choice for a {occasion} look in {weather.get("weather_category", "mild")} weather.',
+                'color_story': 'Complementary tones that work well together.',
+                'why_it_works': f'Weather-appropriate and suited for {occasion} occasions.'
+            }]
         }
 
-# Create global instance
+
 ai_service = RealAIService()

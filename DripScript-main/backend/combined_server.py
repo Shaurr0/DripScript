@@ -37,12 +37,12 @@ def home():
 
 @app.route('/api/health')
 def health():
-    gemini_configured = bool(os.getenv('GEMINI_API_KEY'))
+    cohere_configured = bool(os.getenv('COHERE_API_KEY'))
     return jsonify(
         {
             "status": "healthy",
             "service": "DripScript API",
-            "gemini_configured": gemini_configured,
+            "ai_configured": cohere_configured,
         }
     )
 
@@ -55,8 +55,8 @@ def classify_clothing():
     if not image or not isinstance(image, str):
         return jsonify({"error": "image (base64string) is required"}), 400
 
-    gemini_api_key = os.getenv('GEMINI_API_KEY')
-    if not gemini_api_key:
+    cohere_api_key = os.getenv('COHERE_API_KEY')
+    if not cohere_api_key:
         return jsonify({"error": "API key not configured"}), 503
 
     if not ai_service:
@@ -81,8 +81,8 @@ def recommendations():
     if not isinstance(wardrobe, list) or len(wardrobe) == 0:
         return jsonify({"error": "Wardrobe is required"}), 400
 
-    gemini_api_key = os.getenv('GEMINI_API_KEY')
-    if not gemini_api_key:
+    cohere_api_key = os.getenv('COHERE_API_KEY')
+    if not cohere_api_key:
         return jsonify({"error": "API key not configured"}), 503
 
     if not ai_service:
