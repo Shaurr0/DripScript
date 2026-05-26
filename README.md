@@ -21,6 +21,7 @@ A wardrobe management and outfit recommendation tool. Upload your clothes, let t
 
 ## Project Structure
 
+```
 DripScript/
 ├── frontend/
 │   ├── src/
@@ -49,27 +50,33 @@ DripScript/
 
 ### Backend
 
+```bash
 cd backend
 pip install -r config/requirements.txt
-
+```
 
 Create `backend/.env`:
 
+```
 COHERE_API_KEY=your_key_here
 OPENWEATHER_API_KEY=your_key_here   # optional
-
+```
 
 Start the server:
 
+```bash
 python combined_server.py
+```
 
 The API runs on `http://localhost:5000`.
 
 ### Frontend
+
+```bash
 cd frontend
 npm install
 npm run dev
-
+```
 
 Opens on `http://localhost:5173`. Make sure the backend is running first.
 
