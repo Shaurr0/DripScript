@@ -1,0 +1,25 @@
+# Core dependencies
+numpy>=1.21.0
+pandas>=1.3.0
+
+# Optional Hugging Face dependencies for advanced AI features
+# Install with: pip install transformers torch
+transformers>=4.20.0
+torch>=1.11.0
+tokenizers>=0.12.0
+
+# Additional ML libraries (optional)
+scikit-learn>=1.0.0
+nltk>=3.7
+
+# API and web framework support (for future extensions)
+flask>=2.0.0
+requests>=2.25.0
+
+# Data handling
+python-dateutil>=2.8.0
+python-dotenv>=0.19.0
+
+# Web framework
+flask>=2.0.0
+flask-cors>=3.0.0
