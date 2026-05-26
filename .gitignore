@@ -41,6 +41,11 @@ logs/
 .vite/
 
 # AI/ML models
+models/
 *.model
 *.pkl
 *.joblib
+*.h5
+*.pt
+*.pth
+*.onnx
