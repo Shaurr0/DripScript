@@ -7,11 +7,14 @@ build/
 
 # Environment files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
 !*.env.template
+!.env.example
+
+# Firebase credentials
+firebase-adminsdk*.json
+*-firebase-adminsdk*.json
+serviceAccountKey*.json
 
 # Python
 __pycache__/
@@ -40,6 +43,9 @@ logs/
 # Vite cache
 .vite/
 
+# Uploads
+uploads/
+
 # AI/ML models
 models/
 *.model
@@ -49,3 +55,12 @@ models/
 *.pt
 *.pth
 *.onnx
+
+# Secrets / credentials
+*.pem
+*.key
+*.cert
+*.credentials
+
+# Claude Code
+.claude/
