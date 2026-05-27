@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__filesystem__list_directory_with_sizes",
+      "mcp__filesystem__directory_tree",
+      "mcp__filesystem__read_text_file",
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\(r'C:\\\\ALL PROJECT FILES\\\\DripScript-main\\\\DripScript-main\\\\backend\\\\combined_server.py'\\).read\\(\\)\\); print\\('combined_server.py: OK'\\)\")",
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\(r'C:\\\\ALL PROJECT FILES\\\\DripScript-main\\\\DripScript-main\\\\backend\\\\services\\\\ai_service.py'\\).read\\(\\)\\); print\\('ai_service.py: OK'\\)\")",
+      "WebSearch",
+      "Bash(python -c \"from services.ai_service import ai_service; print\\('Import OK'\\)\")",
+      "Bash(python -m pytest tests/test_clothing_analysis.py -v --tb=short)",
+      "Bash(Select-Object -Last 30)",
+      "Bash(python -c ' *)",
+      "Bash(npx vite *)",
+      "Bash(python -m pytest tests/test_clothing_analysis.py --tb=short -q)",
+      "Bash(Get-ChildItem -Path \"C:\\\\ALL PROJECT FILES\\\\DripScript-main\\\\frontend\\\\src\" -Recurse -File)",
+      "Bash(Select-Object FullName)",
+      "Bash(Sort-Object FullName)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('services/fashionclip_service.py'\\).read\\(\\)\\); print\\('fashionclip_service.py: OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('services/ai_service.py'\\).read\\(\\)\\); print\\('ai_service.py: OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('combined_server.py'\\).read\\(\\)\\); print\\('combined_server.py: OK'\\)\")",
+      "Bash(python -c \"from services import fashionclip_service; print\\('Import OK, available:', fashionclip_service.is_available\\(\\)\\)\")",
+      "Bash(python -c \"from services.ai_service import RealAIService; print\\('ai_service import OK'\\)\")"
+    ]
+  }
+}
