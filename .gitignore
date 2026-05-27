@@ -64,3 +64,4 @@ models/
 
 # Claude Code
 .claude/
+CLAUDE.md
